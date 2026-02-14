@@ -8,6 +8,7 @@ Estensione Chrome (Manifest V3) per supportare la gestione avanzata di tabelle i
 - Mostra/nascondi e riordino colonne con salvataggio su `chrome.storage.local`.
 - Suggerimenti AI (anteprima, applicazione, rifiuto) con cache analisi per vista.
 - Opzioni AI dedicate (`options_page`) per provider/model/endpoint e token.
+- Debug esteso con bundle pagina/tabella copiabile negli appunti per supporto rapido su problemi di riordino o hide colonne.
 
 ## Installazione locale
 
@@ -35,6 +36,15 @@ Quando premi **Analizza pagina** nel popup, l'estensione verifica la configurazi
 - se `provider/model/endpoint` non sono completi, l'analisi viene bloccata con messaggio chiaro;
 - se provider diretto e token assente, analisi bloccata;
 - se token cifrato e passphrase mancante/errata, analisi bloccata.
+
+## Debug e supporto tecnico
+
+Se le funzioni di **riordino colonne** o **hide column** non funzionano in una pagina:
+
+1. Apri il popup dell'estensione.
+2. Premi **Debug**.
+3. Il plugin genera un **debug bundle** (metadati pagina, tabelle rilevate, configurazioni salvate e capability runtime) e prova a copiarlo automaticamente negli appunti.
+4. Incolla il bundle nella richiesta di supporto per facilitare la correzione.
 
 ## Privacy e minimizzazione dati
 

@@ -446,6 +446,78 @@
         };
     }
 
+
+    function getColumnFieldList(columns = []) {
+        return columns.map((col) => col?.field).filter(Boolean);
+    }
+
+    function buildTableDebugInfo(table) {
+        const liveColumns = getCols(table.el);
+        const tabInstance = findTabulatorInstance(table.el);
+        const visibleColumns = liveColumns.filter((col) => col.visible !== false);
+
+        return {
+            tableId: table.tableId,
+            label: table.label,
+            tagName: table.el.tagName,
+            strategy: table.strategy,
+            domPath: buildDomPath(table.el),
+            heading: getNearbyHeading(table.el),
+            capabilities: {
+                tabulator: !!tabInstance,
+                payloadColumns: !!(table.el.hasAttribute && table.el.hasAttribute("payload-columns")),
+                setColumns: !!(tabInstance && typeof tabInstance.setColumns === "function")
+            },
+            columns: {
+                count: liveColumns.length,
+                visibleCount: visibleColumns.length,
+                hiddenCount: Math.max(liveColumns.length - visibleColumns.length, 0),
+                fields: getColumnFieldList(liveColumns),
+                visibleFields: getColumnFieldList(visibleColumns)
+            }
+        };
+    }
+
+    async function buildDebugBundle(tables) {
+        const tableReports = [];
+
+        for (const table of tables) {
+            const tableDebug = buildTableDebugInfo(table);
+            const { key, saved } = await loadSavedOrderByTableId(table.tableId, table.el);
+
+            tableReports.push({
+                ...tableDebug,
+                storage: {
+                    key,
+                    hasSavedConfig: Array.isArray(saved) && saved.length > 0,
+                    savedConfig: saved || []
+                }
+            });
+        }
+
+        return {
+            generatedAt: new Date().toISOString(),
+            extension: "Filter Help (Pro)",
+            page: {
+                href: location.href,
+                origin: location.origin,
+                pathname: location.pathname,
+                title: truncateText(document.title, 200)
+            },
+            totals: {
+                tablesFound: tables.length,
+                tablesWithSavedConfig: tableReports.filter((item) => item.storage.hasSavedConfig).length
+            },
+            tables: tableReports,
+            pageSnapshot: buildPageSnapshot(),
+            troubleshootingChecklist: [
+                "Verificare che tableId della pagina coincida con quello salvato in storage.",
+                "Controllare capabilities.setColumns/capabilities.payloadColumns per capire se il riordino runtime è supportato.",
+                "Confrontare columns.fields con storage.savedConfig per identificare colonne rinominate/mancanti."
+            ]
+        };
+    }
+
     async function requestBackgroundAnalysis(payload) {
         return new Promise((resolve) => {
             chrome.runtime.sendMessage(payload, (response) => {
@@ -539,20 +611,11 @@
                 }
 
                 if (action === "debug") {
-                    const firstTable = tables[0];
-                    const currentCols = getCols(firstTable.el);
-                    const tabInstance = findTabulatorInstance(firstTable.el);
-
+                    const bundle = await buildDebugBundle(tables);
                     return {
                         ok: true,
-                        dbg: {
-                            tagName: firstTable.el.tagName,
-                            key: computeKeyStable(firstTable.el),
-                            tableId: firstTable.tableId,
-                            tablesFound: tables.length,
-                            hasTabulator: !!tabInstance,
-                            colsFound: currentCols.length
-                        }
+                        msg: "Debug bundle generato.",
+                        dbg: bundle
                     };
                 }
 
