@@ -270,6 +270,58 @@
         return true;
     }
 
+    async function applyColumnsToTable(descriptor, columns) {
+        if (!Array.isArray(columns) || !columns.length) return { ok: false, msg: "Nessuna colonna da applicare." };
+        if (await setColsViaTabulator(descriptor.el, columns)) return { ok: true, mode: "tabulator" };
+        if (await setColsViaPayload(descriptor.el, columns)) return { ok: true, mode: "payload" };
+        return { ok: false, msg: "Tabella non modificabile in runtime." };
+    }
+
+    function buildSuggestionPreview(descriptor, suggestion = {}) {
+        const currentCols = getCols(descriptor.el);
+        if (!currentCols.length) return { ok: false, msg: "Colonne non disponibili." };
+
+        const kind = suggestion.kind;
+        if (kind === "hide_non_essential") {
+            const fieldsToHide = new Set(Array.isArray(suggestion.fieldsToHide) ? suggestion.fieldsToHide : []);
+            const columns = currentCols.map((col) => ({
+                ...col,
+                visible: !fieldsToHide.has(col.field)
+            }));
+            return { ok: true, kind, columns, irreversible: true };
+        }
+
+        if (kind === "reorder_columns") {
+            const orderedFields = Array.isArray(suggestion.orderedFields) ? suggestion.orderedFields : [];
+            const fieldMap = new Map(currentCols.map((col) => [col.field, col]));
+            const used = new Set();
+            const reordered = [];
+
+            for (const field of orderedFields) {
+                if (fieldMap.has(field)) {
+                    reordered.push(fieldMap.get(field));
+                    used.add(field);
+                }
+            }
+            for (const col of currentCols) {
+                if (!used.has(col.field)) reordered.push(col);
+            }
+            return { ok: true, kind, columns: reordered, irreversible: true };
+        }
+
+        if (kind === "highlight_column") {
+            return {
+                ok: true,
+                kind,
+                columns: currentCols,
+                irreversible: false,
+                msg: "Suggerimento informativo: nessuna modifica persistente da applicare."
+            };
+        }
+
+        return { ok: false, msg: "Tipo suggerimento non supportato." };
+    }
+
     async function applySavedOrderToTable(descriptor) {
         const { saved } = await loadSavedOrderByTableId(descriptor.tableId, descriptor.el);
         if (!saved) return { applied: false, reason: "no-saved" };
@@ -525,6 +577,36 @@
                         msg: result.source === "cache" ? "Suggerimenti caricati da cache." : "Suggerimenti generati.",
                         analysis: result.analysis
                     };
+                }
+
+                if (action === "preview_suggestion" || action === "apply_suggestion") {
+                    const suggestion = data?.suggestion;
+                    const targetTableId = data?.tableId || tables[0]?.tableId;
+                    const descriptor = tables.find((t) => t.tableId === targetTableId) || tables[0];
+                    if (!descriptor) return { ok: false, msg: "Tabella non trovata." };
+
+                    const preview = buildSuggestionPreview(descriptor, suggestion);
+                    if (!preview.ok) return preview;
+
+                    if (action === "preview_suggestion") {
+                        return {
+                            ok: true,
+                            irreversible: preview.irreversible,
+                            msg: preview.msg || "Anteprima pronta.",
+                            summary: {
+                                tableId: descriptor.tableId,
+                                columns: preview.columns.map((c) => ({
+                                    field: c.field,
+                                    label: c.title || c.label || c.field,
+                                    visible: c.visible !== false
+                                }))
+                            }
+                        };
+                    }
+
+                    const applyRes = await applyColumnsToTable(descriptor, preview.columns);
+                    if (!applyRes.ok) return applyRes;
+                    return { ok: true, msg: "Suggerimento applicato.", irreversible: preview.irreversible };
                 }
 
                 if (action === "restore") { await aggressiveReapply(); return { ok: true }; }
