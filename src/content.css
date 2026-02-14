@@ -1,0 +1,99 @@
+#wah-panel {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 2147483646;
+  width: 300px;
+  max-height: 70vh;
+  overflow: auto;
+  background: #111827;
+  color: #f9fafb;
+  border: 1px solid #374151;
+  border-radius: 10px;
+  font-family: Arial, sans-serif;
+  font-size: 13px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
+}
+
+#wah-panel * {
+  box-sizing: border-box;
+}
+
+.wah-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid #374151;
+}
+
+.wah-title {
+  font-weight: 700;
+}
+
+.wah-body {
+  padding: 10px 12px;
+}
+
+.wah-section {
+  margin-bottom: 14px;
+}
+
+.wah-section h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+
+.wah-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.wah-row input,
+.wah-row select,
+.wah-row button,
+#wah-panel button {
+  font-size: 12px;
+}
+
+.wah-row input,
+.wah-row select {
+  flex: 1;
+  border: 1px solid #4b5563;
+  background: #1f2937;
+  color: #f9fafb;
+  border-radius: 6px;
+  padding: 6px;
+}
+
+.wah-btn {
+  border: 1px solid #4b5563;
+  background: #374151;
+  color: #f9fafb;
+  border-radius: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+
+.wah-btn:hover {
+  background: #4b5563;
+}
+
+.wah-chip {
+  display: inline-block;
+  margin: 3px 5px 3px 0;
+  padding: 4px 7px;
+  border: 1px solid #4b5563;
+  border-radius: 999px;
+  background: #1f2937;
+}
+
+.wah-small {
+  font-size: 11px;
+  color: #d1d5db;
+}
+
+.wah-hidden {
+  display: none;
+}
