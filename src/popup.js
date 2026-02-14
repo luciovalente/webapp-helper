@@ -13,7 +13,7 @@ async function ensureContentInjected(tabId) {
     try {
         await chrome.scripting.executeScript({
             target: { tabId, allFrames: true },
-            files: ["content.js"]
+            files: ["src/content.js"]
         });
     } catch (e) {}
 }

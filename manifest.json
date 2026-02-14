@@ -4,10 +4,14 @@
   "version": "0.2.0",
   "description": "Gestione avanzata colonne tabelle: Scanner, Ordinamento, Visibilità e Inversione.",
   "action": {
-    "default_popup": "popup.html",
+    "default_popup": "src/popup.html",
     "default_title": "Filter Help"
   },
-  "permissions": ["storage", "scripting", "activeTab"],
+  "permissions": [
+    "storage",
+    "scripting",
+    "activeTab"
+  ],
   "host_permissions": [
     "https://odoo.sorgenia-test-02.symple.cloud/*",
     "https://api.openai.com/*"
