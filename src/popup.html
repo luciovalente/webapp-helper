@@ -18,6 +18,8 @@
       .status-known { background-color: #e3f2fd; color: #1565c0; border: 1px solid #bbdefb; }
 
       .scanner-area { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 0; max-height: 300px; overflow-y: auto; }
+      #tableSelectorWrap { display: none; margin-bottom: 8px; }
+      #tableSelector { width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 4px; background: #fff; }
       
       .col-item { display: flex; align-items: center; padding: 6px 10px; border-bottom: 1px solid #eee; gap: 8px; }
       .col-item:last-child { border-bottom: none; }
@@ -47,6 +49,9 @@
     </div>
 
     <div id="scannerContainer" style="display:none;">
+        <div id="tableSelectorWrap">
+          <select id="tableSelector"></select>
+        </div>
         <div id="viewStatus"></div>
         <div class="scanner-area" id="colList"></div>
         <button id="btnApplyScan">Salva Vista Corrente</button>

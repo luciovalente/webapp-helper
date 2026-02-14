@@ -36,19 +36,49 @@ function setOut(text) {
     if (text.startsWith("OK")) setTimeout(() => el.textContent = "", 3000);
 }
 
-// --- LOGICA SCANNER ---
-let currentColumns = []; 
+let currentColumns = [];
+let scanTables = [];
+let selectedTableId = null;
+
+function getSelectedTable() {
+    return scanTables.find((t) => t.tableId === selectedTableId) || scanTables[0] || null;
+}
+
+function renderTableSelector() {
+    const container = document.getElementById("tableSelectorWrap");
+    const select = document.getElementById("tableSelector");
+
+    if (!scanTables.length) {
+        container.style.display = "none";
+        select.innerHTML = "";
+        return;
+    }
+
+    container.style.display = "block";
+    select.innerHTML = "";
+
+    scanTables.forEach((table, idx) => {
+        const opt = document.createElement("option");
+        opt.value = table.tableId;
+        opt.textContent = `${idx + 1}. ${table.label}`;
+        select.appendChild(opt);
+    });
+
+    if (!selectedTableId || !scanTables.some((t) => t.tableId === selectedTableId)) {
+        selectedTableId = scanTables[0].tableId;
+    }
+    select.value = selectedTableId;
+}
 
 function renderScanner(columns, isKnown) {
     const container = document.getElementById("scannerContainer");
     const list = document.getElementById("colList");
     const btnSave = document.getElementById("btnApplyScan");
     const statusDiv = document.getElementById("viewStatus");
-    
+
     container.style.display = "block";
     list.innerHTML = "";
-    
-    // Aggiorna Status Bar
+
     statusDiv.style.display = "block";
     if (isKnown) {
         statusDiv.textContent = "Vista Salvata (Modalità Modifica)";
@@ -60,7 +90,6 @@ function renderScanner(columns, isKnown) {
         btnSave.textContent = "Salva Nuova Vista";
     }
 
-    // Renderizza lista colonne
     columns.forEach((col, index) => {
         const row = document.createElement("div");
         row.className = "col-item" + (col.visible ? "" : " hidden-col");
@@ -71,13 +100,13 @@ function renderScanner(columns, isKnown) {
         chk.checked = col.visible;
         chk.onchange = () => {
             col.visible = chk.checked;
-            renderScanner(currentColumns, isKnown); 
+            renderScanner(currentColumns, isKnown);
         };
 
         const lbl = document.createElement("div");
         lbl.className = "col-label";
         lbl.textContent = col.label || col.field;
-        lbl.title = col.field; 
+        lbl.title = col.field;
 
         const btns = document.createElement("div");
         btns.className = "move-btns";
@@ -109,6 +138,15 @@ function moveCol(index, dir, isKnown) {
     renderScanner(currentColumns, isKnown);
 }
 
+document.getElementById("tableSelector").addEventListener("change", (e) => {
+    selectedTableId = e.target.value;
+    const selected = getSelectedTable();
+    if (!selected) return;
+
+    currentColumns = selected.columns.map((c) => ({ ...c }));
+    renderScanner(currentColumns, selected.isKnown);
+});
+
 // --- BUTTON EVENTS ---
 
 document.getElementById("btnScan").addEventListener("click", async () => {
@@ -116,9 +154,18 @@ document.getElementById("btnScan").addEventListener("click", async () => {
     try {
         const res = await callAction("scan");
         if (res.ok) {
-            currentColumns = res.columns;
-            // res.isKnown ci dice se esiste già una config per questa URL/Tabella
-            renderScanner(currentColumns, res.isKnown);
+            scanTables = Array.isArray(res.tables) ? res.tables : [];
+            if (!scanTables.length) {
+                setOut("ERRORE: Nessuna tabella utile trovata.");
+                return;
+            }
+
+            selectedTableId = scanTables[0].tableId;
+            renderTableSelector();
+
+            const selected = getSelectedTable();
+            currentColumns = selected.columns.map((c) => ({ ...c }));
+            renderScanner(currentColumns, selected.isKnown);
             setOut("");
         } else {
             setOut("ERRORE: " + res.msg);
@@ -127,15 +174,24 @@ document.getElementById("btnScan").addEventListener("click", async () => {
 });
 
 document.getElementById("btnApplyScan").addEventListener("click", async () => {
+    const selected = getSelectedTable();
+    if (!selected) {
+        setOut("ERRORE: Nessuna tabella selezionata.");
+        return;
+    }
+
     setOut("Salvataggio...");
-    const payload = currentColumns.map(c => ({ 
-        field: c.field, 
+    const payload = currentColumns.map(c => ({
+        field: c.field,
         visible: c.visible,
-        label: c.label 
+        label: c.label
     }));
-    
+
     try {
-        const res = await callAction("save_config", payload);
+        const res = await callAction("save_config", {
+            tableId: selected.tableId,
+            columns: payload
+        });
         if (res.ok) setOut("OK: Vista salvata e applicata!");
         else setOut("ERRORE: " + res.msg);
     } catch (e) { setOut("ERRORE: " + e.message); }
