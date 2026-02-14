@@ -70,6 +70,21 @@ function setOut(text) {
     if (text.startsWith("OK")) setTimeout(() => el.textContent = "", 3000);
 }
 
+
+async function copyDebugToClipboard(debugPayload) {
+    const serialized = JSON.stringify(debugPayload, null, 2);
+    if (!navigator.clipboard?.writeText) {
+        return { ok: false, text: serialized, msg: "Clipboard non disponibile nel popup." };
+    }
+
+    try {
+        await navigator.clipboard.writeText(serialized);
+        return { ok: true, text: serialized, msg: "Debug copiato negli appunti." };
+    } catch (error) {
+        return { ok: false, text: serialized, msg: "Impossibile copiare automaticamente il debug." };
+    }
+}
+
 let currentColumns = [];
 let scanTables = [];
 let selectedTableId = null;
@@ -461,7 +476,28 @@ function wireLegacy(btnId, action) {
 
 wireLegacy("btnInvert", "invert");
 wireLegacy("btnRestore", "restore");
-wireLegacy("btnDebug", "debug");
+
+document.getElementById("btnDebug").addEventListener("click", async () => {
+    setOut("Raccolgo debug pagina...");
+    try {
+        const result = await callAction("debug");
+        if (!result.ok) {
+            setOut("ERRORE: " + result.msg);
+            return;
+        }
+
+        const clipboardResult = await copyDebugToClipboard(result.dbg);
+        if (clipboardResult.ok) {
+            setOut("OK: debug raccolto e copiato negli appunti. Incollalo in chat per correggere il plugin.");
+        } else {
+            setOut(`${clipboardResult.msg}
+
+${clipboardResult.text}`);
+        }
+    } catch (e) {
+        setOut("ERRORE: " + e.message);
+    }
+});
 
 
 document.getElementById("btnOpenOptions").addEventListener("click", async () => {
