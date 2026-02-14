@@ -264,6 +264,72 @@
     attachObservers();
     aggressiveReapply();
 
+
+
+    function truncateText(value, max = 220) {
+        const text = (value || "").replace(/\s+/g, " ").trim();
+        if (!text) return "";
+        return text.length > max ? text.slice(0, max) + "…" : text;
+    }
+
+    function collectReducedDomSnapshot() {
+        const nodes = [...document.querySelectorAll("h1, h2, h3, form, table, [role='table'], button, input, select, textarea, canvas, svg")].slice(0, 120);
+        return nodes.map((node) => ({
+            tag: node.tagName.toLowerCase(),
+            id: node.id || null,
+            className: truncateText(node.className || "", 120),
+            role: node.getAttribute("role"),
+            text: truncateText(node.textContent, 180)
+        }));
+    }
+
+    function collectTableMetadata() {
+        return findAllTables().slice(0, 10).map((table, index) => {
+            const cols = getCols(table).slice(0, 40).map((col) => ({
+                field: col.field || null,
+                label: col.title || col.label || col.field || null,
+                visible: col.visible !== false
+            }));
+            return {
+                table_id: table.id || table.getAttribute("unique-id") || `${table.tagName.toLowerCase()}_${index}`,
+                tag: table.tagName.toLowerCase(),
+                column_count: cols.length,
+                columns: cols
+            };
+        });
+    }
+
+    function collectSignificantInlineScripts() {
+        const keywords = /(tabulator|table|filter|chart|form|fetch|axios|xhr|api)/i;
+        return [...document.querySelectorAll("script:not([src])")].map((s) => s.textContent || "")
+            .filter((txt) => txt.length > 30 && keywords.test(txt))
+            .slice(0, 8)
+            .map((txt) => truncateText(txt, 900));
+    }
+
+    function buildPageSnapshot() {
+        return {
+            page: {
+                url: location.href,
+                title: document.title,
+                pathname: location.pathname
+            },
+            dom: collectReducedDomSnapshot(),
+            table_metadata: collectTableMetadata(),
+            significant_inline_scripts: collectSignificantInlineScripts()
+        };
+    }
+
+    async function requestBackgroundAnalysis(payload) {
+        return new Promise((resolve) => {
+            chrome.runtime.sendMessage(payload, (response) => {
+                const err = chrome.runtime.lastError;
+                if (err) resolve({ ok: false, code: "RUNTIME", message: err.message });
+                else resolve(response || { ok: false, code: "NO_RESPONSE", message: "Nessuna risposta dal background." });
+            });
+        });
+    }
+
     // --- API ESTERNA ---
     window.__filterHelp = {
         async run(action, data) {
@@ -332,6 +398,38 @@
                             colsFound: currentCols.length
                         } 
                     }; 
+                }
+
+                if (action === "analyze_page") {
+                    const snapshot = buildPageSnapshot();
+                    const result = await requestBackgroundAnalysis({
+                        action: "analyze_page",
+                        snapshot,
+                        url: location.href,
+                        viewKey: key,
+                        forceRefresh: !!data?.forceRefresh
+                    });
+
+                    if (!result?.ok) {
+                        const humanErrors = {
+                            TOKEN_MISSING: "Token OpenAI non configurato. Imposta OPENAI_API_KEY in storage.",
+                            QUOTA: "Quota API esaurita o limite richieste raggiunto.",
+                            TIMEOUT: "Richiesta scaduta per timeout: riprova tra poco.",
+                            SCHEMA_INVALID: "Il modello ha risposto in formato inatteso.",
+                            INVALID_RESPONSE: "Risposta del modello non valida.",
+                            UNAUTHORIZED: "Token API non valido o revocato."
+                        };
+                        return {
+                            ok: false,
+                            msg: humanErrors[result.code] || result.message || "Analisi non disponibile."
+                        };
+                    }
+
+                    return {
+                        ok: true,
+                        msg: result.source === "cache" ? "Suggerimenti caricati da cache." : "Suggerimenti generati.",
+                        analysis: result.analysis
+                    };
                 }
                 
                 if (action === "restore") { await aggressiveReapply(); return { ok: true }; }
