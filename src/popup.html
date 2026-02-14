@@ -53,11 +53,16 @@
     <div class="actions-grid">
       <button id="btnScan" class="action-btn" style="background:#e3f2fd; border-color:#90caf9; font-weight:bold;">🔍 Scan & Edit</button>
       <button id="btnAnalyzePage" class="action-btn" style="background:#fff8e1; border-color:#ffe082; font-weight:bold;">🧠 Analizza pagina</button>
+      <button id="btnOpenOptions" class="action-btn" style="background:#ede7f6; border-color:#b39ddb; font-weight:bold;">⚙️ Opzioni AI</button>
       <button id="btnRestore" class="action-btn">Ripristina</button>
       <button id="btnInvert" class="action-btn">Inverti</button>
       <button id="btnDebug" class="action-btn">Debug</button>
     </div>
 
+
+    <div id="aiRuntime" style="margin:8px 0 4px; display:flex; flex-direction:column; gap:6px;">
+      <input id="runtimePassphrase" type="password" placeholder="Passphrase (solo se token cifrato)" style="padding:6px; border:1px solid #ccc; border-radius:4px; font-size:12px;" />
+    </div>
     <div id="scannerContainer" style="display:none;">
         <div id="tableSelectorWrap">
           <select id="tableSelector"></select>

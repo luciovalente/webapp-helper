@@ -7,6 +7,7 @@
     "default_popup": "src/popup.html",
     "default_title": "Filter Help"
   },
+  "options_page": "src/options.html",
   "permissions": [
     "storage",
     "scripting",
@@ -14,7 +15,9 @@
   ],
   "host_permissions": [
     "https://odoo.sorgenia-test-02.symple.cloud/*",
-    "https://api.openai.com/*"
+    "https://api.openai.com/*",
+    "https://*/*",
+    "http://*/*"
   ],
   "background": {
     "service_worker": "src/background.js"

@@ -35,6 +35,35 @@ async function callAction(action, data = {}) {
     return valid ? valid.result : (results[0]?.result || { ok: false, msg: "Nessuna risposta valida." });
 }
 
+
+async function getAiRuntimeConfig() {
+    return new Promise((resolve) => {
+        chrome.runtime.sendMessage({ action: "get_ai_config" }, (response) => {
+            const err = chrome.runtime.lastError;
+            if (err) resolve({ ok: false, message: err.message });
+            else resolve(response || { ok: false, message: "Nessuna risposta configurazione." });
+        });
+    });
+}
+
+async function ensureAiConfigured() {
+    const res = await getAiRuntimeConfig();
+    if (!res.ok) {
+        return { ok: false, msg: "Impossibile verificare configurazione AI: " + (res.message || "errore sconosciuto") };
+    }
+
+    const cfg = res.config || {};
+    if (!cfg.model || !cfg.endpoint) {
+        return { ok: false, msg: "Configurazione AI mancante: apri Opzioni AI e imposta provider, model ed endpoint." };
+    }
+
+    if (cfg.provider === "openai" && !cfg.tokenStored) {
+        return { ok: false, msg: "Token mancante: apri Opzioni AI e salva token o usa backend proxy." };
+    }
+
+    return { ok: true, config: cfg };
+}
+
 function setOut(text) {
     const el = document.getElementById("out");
     el.textContent = text;
@@ -373,7 +402,14 @@ document.getElementById("btnScan").addEventListener("click", async () => {
 document.getElementById("btnAnalyzePage").addEventListener("click", async () => {
     setOut("Analizzo pagina e genero suggerimenti...");
     try {
-        const res = await callAction("analyze_page");
+        const aiCheck = await ensureAiConfigured();
+        if (!aiCheck.ok) {
+            setOut("ERRORE: " + aiCheck.msg);
+            return;
+        }
+
+        const runtimePassphrase = document.getElementById("runtimePassphrase").value;
+        const res = await callAction("analyze_page", { passphrase: runtimePassphrase });
         if (!res.ok) {
             setOut("ERRORE: " + res.msg);
             return;
@@ -426,3 +462,12 @@ function wireLegacy(btnId, action) {
 wireLegacy("btnInvert", "invert");
 wireLegacy("btnRestore", "restore");
 wireLegacy("btnDebug", "debug");
+
+
+document.getElementById("btnOpenOptions").addEventListener("click", async () => {
+    try {
+        await chrome.runtime.openOptionsPage();
+    } catch (e) {
+        setOut("ERRORE: " + e.message);
+    }
+});
