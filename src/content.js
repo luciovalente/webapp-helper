@@ -1,274 +1,346 @@
 (() => {
-  if (window.__WAH_LOADED__) {
-    return;
-  }
-  window.__WAH_LOADED__ = true;
+    if (window.__filterHelp) return;
 
-  let activeTable = null;
-  let filterState = { query: "", columnIndex: -1 };
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const safeJsonParse = (str) => { try { return JSON.parse(str); } catch { return null; } };
 
-  const panel = document.createElement("aside");
-  panel.id = "wah-panel";
-  panel.innerHTML = `
-    <div class="wah-header">
-      <div class="wah-title">WebApp Helper</div>
-      <button id="wah-toggle" class="wah-btn" title="Mostra/Nascondi">—</button>
-    </div>
-    <div class="wah-body" id="wah-body">
-      <div class="wah-section">
-        <h4>Tabelle rilevate</h4>
-        <div class="wah-row">
-          <select id="wah-table-select"></select>
-          <button id="wah-refresh" class="wah-btn">Aggiorna</button>
-        </div>
-        <div class="wah-small">Clicca l'intestazione colonna per ordinare asc/desc.</div>
-      </div>
-
-      <div class="wah-section">
-        <h4>Visibilità colonne</h4>
-        <div id="wah-columns"></div>
-      </div>
-
-      <div class="wah-section">
-        <h4>Filtri rapidi</h4>
-        <div class="wah-row">
-          <select id="wah-filter-column"></select>
-          <input id="wah-filter-query" placeholder="Contiene..." />
-        </div>
-        <div class="wah-row">
-          <button id="wah-apply-filter" class="wah-btn">Applica</button>
-          <button id="wah-reset-filter" class="wah-btn">Reset</button>
-        </div>
-      </div>
-
-      <div class="wah-section">
-        <h4>Preset filtri</h4>
-        <div class="wah-row">
-          <input id="wah-preset-name" placeholder="Nome preset" />
-          <button id="wah-save-preset" class="wah-btn">Salva</button>
-        </div>
-        <div id="wah-presets"></div>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(panel);
-
-  const $ = (id) => panel.querySelector(`#${id}`);
-  const tableSelect = $("wah-table-select");
-  const columnsBox = $("wah-columns");
-  const filterColumn = $("wah-filter-column");
-  const filterQuery = $("wah-filter-query");
-  const presetsBox = $("wah-presets");
-  const presetName = $("wah-preset-name");
-
-  function getTables() {
-    return [...document.querySelectorAll("table")].filter((t) => t.rows.length > 1);
-  }
-
-  function getHeaders(table) {
-    const firstRow = table.tHead?.rows?.[0] || table.rows[0];
-    return firstRow ? [...firstRow.cells].map((c, i) => c.innerText.trim() || `Colonna ${i + 1}`) : [];
-  }
-
-  function enableHeaderSorting(table) {
-    const firstRow = table.tHead?.rows?.[0] || table.rows[0];
-    if (!firstRow || firstRow.__wahSortingEnabled) {
-      return;
+    // --- Helpers DOM ---
+    function allRootsDeep() {
+        const roots = [document];
+        const walk = (root) => {
+            const els = root.querySelectorAll ? [...root.querySelectorAll("*")] : [];
+            for (const el of els) {
+                if (el.shadowRoot && !roots.includes(el.shadowRoot)) {
+                    roots.push(el.shadowRoot);
+                    walk(el.shadowRoot);
+                }
+            }
+        };
+        walk(document);
+        return roots;
     }
-    firstRow.__wahSortingEnabled = true;
 
-    [...firstRow.cells].forEach((cell, index) => {
-      cell.style.cursor = "pointer";
-      cell.title = "Clicca per ordinare";
-      let asc = true;
-      cell.addEventListener("click", () => {
-        sortTable(table, index, asc);
-        asc = !asc;
-      });
-    });
-  }
-
-  function sortTable(table, colIndex, asc = true) {
-    const tbody = table.tBodies[0] || table;
-    const rows = [...tbody.rows].slice(table.tHead ? 0 : 1);
-
-    rows.sort((a, b) => {
-      const aText = a.cells[colIndex]?.innerText.trim() || "";
-      const bText = b.cells[colIndex]?.innerText.trim() || "";
-      const aNum = Number(aText.replace(/[^\d.-]/g, ""));
-      const bNum = Number(bText.replace(/[^\d.-]/g, ""));
-      const numeric = !Number.isNaN(aNum) && !Number.isNaN(bNum);
-
-      if (numeric) {
-        return asc ? aNum - bNum : bNum - aNum;
-      }
-      return asc ? aText.localeCompare(bText) : bText.localeCompare(aText);
-    });
-
-    rows.forEach((row) => tbody.appendChild(row));
-  }
-
-  function setColumnVisibility(table, colIndex, visible) {
-    [...table.rows].forEach((row) => {
-      const cell = row.cells[colIndex];
-      if (cell) {
-        cell.style.display = visible ? "" : "none";
-      }
-    });
-  }
-
-  function applyFilter(table, query, columnIndex) {
-    const q = query.trim().toLowerCase();
-    const rows = [...(table.tBodies[0] || table).rows].slice(table.tHead ? 0 : 1);
-
-    rows.forEach((row) => {
-      const text = columnIndex >= 0
-        ? (row.cells[columnIndex]?.innerText || "")
-        : row.innerText;
-      row.style.display = !q || text.toLowerCase().includes(q) ? "" : "none";
-    });
-  }
-
-  function renderColumns(table) {
-    const headers = getHeaders(table);
-    columnsBox.innerHTML = "";
-    filterColumn.innerHTML = `<option value="-1">Tutte</option>`;
-
-    headers.forEach((name, index) => {
-      const id = `wah-col-${index}`;
-      const wrap = document.createElement("label");
-      wrap.className = "wah-chip";
-      wrap.innerHTML = `<input id="${id}" type="checkbox" checked /> ${name}`;
-      columnsBox.appendChild(wrap);
-
-      const option = document.createElement("option");
-      option.value = String(index);
-      option.textContent = name;
-      filterColumn.appendChild(option);
-
-      const checkbox = wrap.querySelector("input");
-      checkbox.addEventListener("change", () => setColumnVisibility(table, index, checkbox.checked));
-    });
-  }
-
-  async function loadPresets() {
-    const key = location.origin;
-    const data = await chrome.storage.local.get([key]);
-    return data[key] || {};
-  }
-
-  async function savePreset(name, value) {
-    const key = location.origin;
-    const presets = await loadPresets();
-    presets[name] = value;
-    await chrome.storage.local.set({ [key]: presets });
-    await renderPresets();
-  }
-
-  async function removePreset(name) {
-    const key = location.origin;
-    const presets = await loadPresets();
-    delete presets[name];
-    await chrome.storage.local.set({ [key]: presets });
-    await renderPresets();
-  }
-
-  async function renderPresets() {
-    const presets = await loadPresets();
-    presetsBox.innerHTML = "";
-
-    Object.entries(presets).forEach(([name, state]) => {
-      const row = document.createElement("div");
-      row.className = "wah-row";
-      row.innerHTML = `
-        <button class="wah-btn" data-load="${name}">${name}</button>
-        <button class="wah-btn" data-delete="${name}">Elimina</button>
-      `;
-      presetsBox.appendChild(row);
-
-      row.querySelector("[data-load]").addEventListener("click", () => {
-        filterState = state;
-        filterQuery.value = filterState.query;
-        filterColumn.value = String(filterState.columnIndex);
-        if (activeTable) {
-          applyFilter(activeTable, filterState.query, filterState.columnIndex);
+    // --- Tabulator Discovery (Deep Search) ---
+    function findTabulatorInstance(el) {
+        // 1. Cerca istanza diretta sull'elemento host
+        const candidates = [
+            el?.tabulator, el?.Tabulator, el?._tabulator, el?.__tabulator,
+            el?.table, el?._table, el?.__table
+        ];
+        for (const c of candidates) {
+            if (c && typeof c.setColumns === "function") return c;
+            if (c && c.instance && typeof c.instance.setColumns === "function") return c.instance;
         }
-      });
 
-      row.querySelector("[data-delete]").addEventListener("click", () => removePreset(name));
-    });
-  }
+        // 2. Entra nel Shadow DOM (Cruciale per m2c-view-invoice)
+        const sr = el.shadowRoot;
+        if (!sr) return null;
 
-  function refreshTables() {
-    const tables = getTables();
-    tableSelect.innerHTML = "";
-
-    tables.forEach((table, i) => {
-      enableHeaderSorting(table);
-      const option = document.createElement("option");
-      option.value = String(i);
-      option.textContent = `Tabella ${i + 1} (${table.rows.length} righe)`;
-      tableSelect.appendChild(option);
-    });
-
-    activeTable = tables[0] || null;
-    if (activeTable) {
-      renderColumns(activeTable);
-      applyFilter(activeTable, filterState.query, filterState.columnIndex);
-    } else {
-      columnsBox.innerHTML = "<div class='wah-small'>Nessuna tabella trovata.</div>";
-      filterColumn.innerHTML = `<option value="-1">Tutte</option>`;
+        // Cerca il DIV interno che contiene la tabella Tabulator
+        // Di solito ha classe "tabulator" o "tabulator-tableHolder"
+        const tabNodes = sr.querySelectorAll('.tabulator, [class*="tabulator"]');
+        
+        for (const node of tabNodes) {
+            // Tabulator spesso attacca l'istanza JS al nodo DOM stesso
+            const props = [node.tabulator, node._tabulator, node.__tabulator, node.table];
+            for (const p of props) {
+                if (p && typeof p.setColumns === "function") return p;
+            }
+        }
+        
+        return null;
     }
-  }
 
-  $("wah-refresh").addEventListener("click", refreshTables);
-  tableSelect.addEventListener("change", () => {
-    const tables = getTables();
-    activeTable = tables[Number(tableSelect.value)] || null;
-    if (activeTable) {
-      renderColumns(activeTable);
-      applyFilter(activeTable, filterState.query, filterState.columnIndex);
+    // --- Ricerca Tabelle ---
+    function findAllTables() {
+        const roots = allRootsDeep();
+        const out = [];
+        
+        // Cerca esplicitamente il tag che mi hai indicato
+        const specificTag = "M2C-VIEW-INVOICE"; 
+        // Fallback per le vecchie tabelle
+        const legacyTag = "B2W-TABLE-V2";
+
+        for (const r of roots) {
+            const els = r.querySelectorAll ? r.querySelectorAll("*") : [];
+            for (const el of els) {
+                const tag = el.tagName.toUpperCase();
+                
+                // Se è la tabella fatture, PRENDILA SUBITO
+                if (tag === specificTag) {
+                    out.push(el);
+                }
+                // Se è la tabella vecchia, prendila solo se ha i dati
+                else if (tag === legacyTag || el.getAttribute("payload-columns")) {
+                    out.push(el);
+                }
+            }
+        }
+        return out;
     }
-  });
 
-  $("wah-apply-filter").addEventListener("click", () => {
-    filterState = {
-      query: filterQuery.value,
-      columnIndex: Number(filterColumn.value)
+    function findFirstTable() {
+        const tables = findAllTables();
+        
+        // --- PRIORITÀ ASSOLUTA AL POPUP ---
+        // Se c'è una m2c-view-invoice (la tabella fatture), usa quella.
+        // Altrimenti usa la tabella della pagina sotto.
+        const m2c = tables.find(t => t.tagName === "M2C-VIEW-INVOICE");
+        if (m2c) return m2c;
+
+        return tables[0] || null;
+    }
+
+    // --- Estrazione Colonne ---
+    function getCols(el) {
+        // Caso A: Tabella Fatture (m2c) -> Chiedi a Tabulator
+        const tab = findTabulatorInstance(el);
+        if (tab && typeof tab.getColumnDefinitions === "function") {
+            const defs = tab.getColumnDefinitions();
+            return defs.map(d => ({
+                field: d.field,
+                title: d.title || d.label || d.field, 
+                visible: d.visible !== false,
+                ...d 
+            }));
+        } 
+        // A volte Tabulator usa .getColumns() che ritorna oggetti Column, non definizioni
+        else if (tab && typeof tab.getColumns === "function") {
+             const cols = tab.getColumns();
+             return cols.map(c => ({
+                 field: c.getField(),
+                 title: c.getDefinition().title,
+                 visible: c.isVisible()
+             }));
+        }
+
+        // Caso B: Tabella Standard (b2w) -> Attributo JSON
+        if (el.payloadColumns && Array.isArray(el.payloadColumns)) {
+             return JSON.parse(JSON.stringify(el.payloadColumns));
+        }
+        const attrCols = safeJsonParse(el.getAttribute("payload-columns") || "");
+        if (Array.isArray(attrCols)) return attrCols;
+
+        return [];
+    }
+
+    // --- Chiave Univoca ---
+    function computeKeyStable(el) {
+        // Generiamo una chiave specifica per questa tabella fatture
+        let uid = el.getAttribute("unique-id") || el.id;
+        
+        if (!uid) {
+            // Usiamo gli attributi che vedo nel tuo HTML
+            const acc = el.getAttribute("account-code");
+            const crm = el.getAttribute("crm-code");
+            if (acc) uid = "invoice_acc_" + acc; // Es: invoice_acc_154995
+            else if (crm) uid = "invoice_crm_" + crm;
+            else uid = el.tagName.toLowerCase();
+        }
+
+        // Includiamo search per differenziare le pagine
+        return `view_cfg_v4:${location.pathname}:${uid}`;
+    }
+
+    // --- Logica di Applicazione (Scan / Save / Restore) ---
+
+    async function loadSavedOrder(el) {
+        const key = computeKeyStable(el);
+        const obj = await chrome.storage.local.get(key);
+        if (Array.isArray(obj[key]) && obj[key].length) return obj[key];
+        return null;
+    }
+
+    function buildColumnsToApply(currentCols, savedConfig) {
+        const currentMap = new Map(currentCols.map(c => [c?.field, c]));
+        const finalCols = [];
+        const isNewFormat = savedConfig.length > 0 && typeof savedConfig[0] === 'object';
+
+        if (isNewFormat) {
+            for (const item of savedConfig) {
+                if (item.visible && currentMap.has(item.field)) {
+                    finalCols.push(currentMap.get(item.field));
+                    currentMap.delete(item.field);
+                } else if (!item.visible) {
+                    currentMap.delete(item.field); 
+                }
+            }
+        } else {
+            for (const field of savedConfig) {
+                if (currentMap.has(field)) {
+                    finalCols.push(currentMap.get(field));
+                    currentMap.delete(field);
+                }
+            }
+        }
+        for (const [_, col] of currentMap.entries()) finalCols.push(col);
+        return finalCols;
+    }
+
+    async function setColsViaTabulator(el, cols) {
+        const tab = findTabulatorInstance(el);
+        if (!tab || typeof tab.setColumns !== "function") return false;
+        try {
+            await tab.setColumns(cols);
+            if (typeof tab.redraw === "function") tab.redraw();
+            return true;
+        } catch (e) { return false; }
+    }
+
+    async function setColsViaPayload(el, cols) {
+        if (!el.hasAttribute("payload-columns")) return false;
+        const json = JSON.stringify(cols);
+        if (el.getAttribute("payload-columns") === json) return false;
+        el.setAttribute("payload-columns", json);
+        if ("payloadColumns" in el) el.payloadColumns = cols;
+        return true;
+    }
+
+    async function applySavedOrderToTable(el) {
+        const savedConfig = await loadSavedOrder(el);
+        if (!savedConfig) return { applied: false, reason: "no-saved" };
+
+        const currentCols = getCols(el);
+        if (!currentCols.length) return { applied: false, reason: "cols-not-ready" };
+
+        const colsToApply = buildColumnsToApply(currentCols, savedConfig);
+        
+        // Verifica se l'ordine è già corretto
+        const currentFields = currentCols.map(c => c.field);
+        const targetFields = colsToApply.map(c => c.field);
+        const isIdentical = currentFields.length === targetFields.length && 
+                            currentFields.every((val, index) => val === targetFields[index]);
+
+        if (isIdentical) return { applied: false, reason: "already-sorted" };
+
+        if (await setColsViaTabulator(el, colsToApply)) return { applied: true, reason: "tabulator" };
+        if (await setColsViaPayload(el, colsToApply)) return { applied: true, reason: "payload" };
+
+        return { applied: false, reason: "failed" };
+    }
+
+    // --- Observer ---
+    let isRunning = false;
+    async function aggressiveReapply() {
+        if (isRunning) return;
+        isRunning = true;
+        for (let i = 0; i < 25; i++) { 
+            const tables = findAllTables();
+            let anySuccess = false;
+            for (const t of tables) {
+                try { 
+                    const res = await applySavedOrderToTable(t); 
+                    if (res.applied) anySuccess = true;
+                } catch {}
+            }
+            await sleep(anySuccess ? 800 : 300);
+        }
+        isRunning = false;
+    }
+
+    function attachObservers() {
+        let timeout;
+        const mo = new MutationObserver((mutations) => {
+            const relevant = mutations.some(m => m.type !== 'attributes' || m.attributeName !== 'payload-columns');
+            if (!relevant) return;
+            clearTimeout(timeout);
+            timeout = setTimeout(aggressiveReapply, 500);
+        });
+
+        const observeAll = () => {
+            const roots = allRootsDeep();
+            for (const r of roots) {
+                try { mo.observe(r, { childList: true, subtree: true }); } catch {}
+            }
+        };
+        observeAll();
+        setInterval(observeAll, 1500);
+        
+        window.addEventListener("load", aggressiveReapply);
+        const pushState = history.pushState;
+        history.pushState = function() { pushState.apply(history, arguments); aggressiveReapply(); };
+    }
+
+    attachObservers();
+    aggressiveReapply();
+
+    // --- API ESTERNA ---
+    window.__filterHelp = {
+        async run(action, data) {
+            try {
+                const table = findFirstTable();
+                if (!table) return { ok: false, msg: "Nessuna tabella trovata." };
+                
+                const key = computeKeyStable(table);
+                const currentCols = getCols(table);
+                const tabInstance = findTabulatorInstance(table);
+
+                if (action === "scan") {
+                    const saved = await loadSavedOrder(table); 
+                    const live = currentCols;
+                    const isKnown = (Array.isArray(saved) && saved.length > 0);
+                    
+                    const result = [];
+                    const processedFields = new Set();
+
+                    if (isKnown && typeof saved[0] === 'object') {
+                        for (const s of saved) {
+                            const liveDef = live.find(d => d.field === s.field);
+                            result.push({ 
+                                field: s.field, 
+                                label: liveDef ? (liveDef.title || liveDef.label || liveDef.field) : (s.label || s.field), 
+                                visible: s.visible !== false 
+                            });
+                            processedFields.add(s.field);
+                        }
+                    } else if (isKnown && typeof saved[0] === 'string') {
+                         for (const f of saved) {
+                            const def = live.find(d => d.field === f);
+                            if (def) {
+                                result.push({ field: f, label: def.title || def.label || f, visible: true });
+                                processedFields.add(f);
+                            }
+                         }
+                    }
+
+                    for (const def of live) {
+                        if (!processedFields.has(def.field)) {
+                            result.push({ 
+                                field: def.field, 
+                                label: def.title || def.label || def.field, 
+                                visible: true 
+                            });
+                        }
+                    }
+                    
+                    return { ok: true, columns: result, isKnown: isKnown, viewKey: key };
+                }
+
+                if (action === "save_config") {
+                    await chrome.storage.local.set({ [key]: data });
+                    await aggressiveReapply();
+                    return { ok: true, msg: "Configurazione salvata!" };
+                }
+
+                if (action === "debug") {
+                    return { 
+                        ok: true, 
+                        dbg: { 
+                            tagName: table.tagName,
+                            key: key,
+                            hasTabulator: !!tabInstance,
+                            colsFound: currentCols.length
+                        } 
+                    }; 
+                }
+                
+                if (action === "restore") { await aggressiveReapply(); return { ok: true }; }
+                if (action === "invert") { return { ok: true }; } // Usa scan ormai
+
+                return { ok: false, msg: "Comando sconosciuto" };
+            } catch (e) {
+                return { ok: false, msg: "Errore: " + e.message };
+            }
+        }
     };
-    if (activeTable) {
-      applyFilter(activeTable, filterState.query, filterState.columnIndex);
-    }
-  });
-
-  $("wah-reset-filter").addEventListener("click", () => {
-    filterQuery.value = "";
-    filterColumn.value = "-1";
-    filterState = { query: "", columnIndex: -1 };
-    if (activeTable) {
-      applyFilter(activeTable, "", -1);
-    }
-  });
-
-  $("wah-save-preset").addEventListener("click", async () => {
-    const name = presetName.value.trim();
-    if (!name) {
-      return;
-    }
-    filterState = {
-      query: filterQuery.value,
-      columnIndex: Number(filterColumn.value)
-    };
-    await savePreset(name, filterState);
-    presetName.value = "";
-  });
-
-  $("wah-toggle").addEventListener("click", () => {
-    const body = $("wah-body");
-    body.classList.toggle("wah-hidden");
-    $("wah-toggle").textContent = body.classList.contains("wah-hidden") ? "+" : "—";
-  });
-
-  refreshTables();
-  renderPresets();
 })();
