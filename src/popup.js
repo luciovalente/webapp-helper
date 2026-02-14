@@ -1,6 +1,11 @@
-async function getActiveTabId() {
+async function getActiveTab() {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) throw new Error("Tab attiva non trovata");
+    return tab;
+}
+
+async function getActiveTabId() {
+    const tab = await getActiveTab();
     return tab.id;
 }
 
@@ -39,6 +44,8 @@ function setOut(text) {
 let currentColumns = [];
 let scanTables = [];
 let selectedTableId = null;
+let currentSuggestions = [];
+let suggestionStateKey = null;
 
 function getSelectedTable() {
     return scanTables.find((t) => t.tableId === selectedTableId) || scanTables[0] || null;
@@ -138,6 +145,196 @@ function moveCol(index, dir, isKnown) {
     renderScanner(currentColumns, isKnown);
 }
 
+async function buildSuggestionStateKey(tableId) {
+    const tab = await getActiveTab();
+    const pathname = (() => {
+        try { return new URL(tab.url || "").pathname || "unknown-path"; }
+        catch { return "unknown-path"; }
+    })();
+    return `suggestion_state:${pathname}:${tableId || 'default-table'}`;
+}
+
+async function loadSuggestionState() {
+    if (!suggestionStateKey) return {};
+    const stored = await chrome.storage.local.get(suggestionStateKey);
+    return stored[suggestionStateKey] || {};
+}
+
+async function saveSuggestionState(state) {
+    if (!suggestionStateKey) return;
+    await chrome.storage.local.set({ [suggestionStateKey]: state });
+}
+
+function normalizeSuggestions(analysis) {
+    const result = [];
+    const table = analysis?.table_configs?.[0];
+
+    if (table?.columns?.length) {
+        const hideFields = table.columns
+            .filter((c) => c?.suggested_visibility === "hide")
+            .map((c) => c.name)
+            .filter(Boolean);
+
+        if (hideFields.length) {
+            result.push({
+                id: `hide_non_essential:${table.table_id || 'table0'}`,
+                title: "Tabella rilevata: nascondi colonne non essenziali",
+                description: `Colonne suggerite da nascondere: ${hideFields.join(", ")}`,
+                tableId: table.table_id,
+                command: {
+                    kind: "hide_non_essential",
+                    fieldsToHide: hideFields
+                }
+            });
+        }
+
+        const reordered = table.columns.map((c) => c.name).filter(Boolean);
+        if (reordered.length > 1) {
+            result.push({
+                id: `reorder_columns:${table.table_id || 'table0'}`,
+                title: "Riordino consigliato colonne",
+                description: `Ordine proposto: ${reordered.join(" → ")}`,
+                tableId: table.table_id,
+                command: {
+                    kind: "reorder_columns",
+                    orderedFields: reordered
+                }
+            });
+        }
+    }
+
+    for (const action of (analysis?.recommended_actions || [])) {
+        const label = action?.action || "Automazione suggerita";
+        const reason = action?.reason || "Nessuna descrizione";
+        result.push({
+            id: `auto:${label}`,
+            title: `Automazione rilevata: ${label}`,
+            description: reason,
+            tableId: table?.table_id,
+            command: {
+                kind: "highlight_column",
+                sourceAction: label
+            }
+        });
+    }
+
+    return result;
+}
+
+async function updateSuggestionDecision(suggestionId, decision) {
+    const state = await loadSuggestionState();
+    state[suggestionId] = {
+        status: decision,
+        at: new Date().toISOString()
+    };
+    await saveSuggestionState(state);
+}
+
+async function renderSuggestions() {
+    const section = document.getElementById("suggestionsSection");
+    const list = document.getElementById("suggestionsList");
+    list.innerHTML = "";
+
+    if (!currentSuggestions.length) {
+        section.style.display = "none";
+        return;
+    }
+
+    const state = await loadSuggestionState();
+    const visibleSuggestions = currentSuggestions.filter((s) => {
+        const item = state[s.id];
+        return !(item?.status === "accepted" || item?.status === "rejected");
+    });
+
+    if (!visibleSuggestions.length) {
+        section.style.display = "none";
+        return;
+    }
+
+    section.style.display = "block";
+
+    visibleSuggestions.forEach((suggestion) => {
+        const card = document.createElement("div");
+        card.className = "suggestion-card";
+
+        const title = document.createElement("div");
+        title.className = "suggestion-title";
+        title.textContent = suggestion.title;
+
+        const desc = document.createElement("div");
+        desc.className = "suggestion-desc";
+        desc.textContent = suggestion.description;
+
+        const btnWrap = document.createElement("div");
+        btnWrap.className = "suggestion-actions";
+
+        const btnPreview = document.createElement("button");
+        btnPreview.className = "action-btn small";
+        btnPreview.textContent = "Anteprima";
+        btnPreview.onclick = async () => {
+            setOut("Genero anteprima suggerimento...");
+            const preview = await callAction("preview_suggestion", {
+                tableId: suggestion.tableId,
+                suggestion: suggestion.command
+            });
+            if (!preview.ok) {
+                setOut("ERRORE: " + preview.msg);
+                return;
+            }
+            setOut(`OK: ${preview.msg}`);
+        };
+
+        const btnApply = document.createElement("button");
+        btnApply.className = "action-btn small apply";
+        btnApply.textContent = "Applica";
+        btnApply.onclick = async () => {
+            const preview = await callAction("preview_suggestion", {
+                tableId: suggestion.tableId,
+                suggestion: suggestion.command
+            });
+            if (!preview.ok) {
+                setOut("ERRORE: " + preview.msg);
+                return;
+            }
+
+            if (preview.irreversible) {
+                const confirmApply = window.confirm("Questa modifica può alterare la vista corrente. Confermi l'applicazione?");
+                if (!confirmApply) {
+                    setOut("Annullato dall'utente.");
+                    return;
+                }
+            }
+
+            const apply = await callAction("apply_suggestion", {
+                tableId: suggestion.tableId,
+                suggestion: suggestion.command
+            });
+
+            if (!apply.ok) {
+                setOut("ERRORE: " + apply.msg);
+                return;
+            }
+
+            await updateSuggestionDecision(suggestion.id, "accepted");
+            await renderSuggestions();
+            setOut("OK: Suggerimento applicato.");
+        };
+
+        const btnReject = document.createElement("button");
+        btnReject.className = "action-btn small reject";
+        btnReject.textContent = "Non proporre";
+        btnReject.onclick = async () => {
+            await updateSuggestionDecision(suggestion.id, "rejected");
+            await renderSuggestions();
+            setOut("OK: Suggerimento archiviato.");
+        };
+
+        btnWrap.append(btnPreview, btnApply, btnReject);
+        card.append(title, desc, btnWrap);
+        list.appendChild(card);
+    });
+}
+
 document.getElementById("tableSelector").addEventListener("change", (e) => {
     selectedTableId = e.target.value;
     const selected = getSelectedTable();
@@ -171,6 +368,24 @@ document.getElementById("btnScan").addEventListener("click", async () => {
             setOut("ERRORE: " + res.msg);
         }
     } catch (e) { setOut("ERRORE: " + e.message); }
+});
+
+document.getElementById("btnAnalyzePage").addEventListener("click", async () => {
+    setOut("Analizzo pagina e genero suggerimenti...");
+    try {
+        const res = await callAction("analyze_page");
+        if (!res.ok) {
+            setOut("ERRORE: " + res.msg);
+            return;
+        }
+
+        currentSuggestions = normalizeSuggestions(res.analysis);
+        suggestionStateKey = await buildSuggestionStateKey(currentSuggestions[0]?.tableId);
+        await renderSuggestions();
+        setOut("OK: Suggerimenti aggiornati.");
+    } catch (e) {
+        setOut("ERRORE: " + e.message);
+    }
 });
 
 document.getElementById("btnApplyScan").addEventListener("click", async () => {
