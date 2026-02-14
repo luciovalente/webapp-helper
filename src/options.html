@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Filter Help - Opzioni AI</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; background: #f7f7f7; color: #222; }
+      .wrap { max-width: 760px; margin: 24px auto; background: #fff; border: 1px solid #ddd; border-radius: 10px; padding: 20px; }
+      h1 { margin-top: 0; font-size: 20px; }
+      p.helper { margin-top: 0; color: #555; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+      .field.full { grid-column: 1 / -1; }
+      label { font-size: 13px; font-weight: 600; }
+      input, select { font-size: 14px; padding: 8px; border: 1px solid #c8c8c8; border-radius: 6px; }
+      .actions { display: flex; gap: 8px; margin-top: 12px; }
+      button { padding: 9px 12px; border: 1px solid #bdbdbd; border-radius: 6px; background: #fff; cursor: pointer; }
+      button.primary { background: #1565c0; border-color: #1565c0; color: #fff; }
+      .note { margin-top: 10px; font-size: 12px; color: #666; }
+      #status { margin-top: 12px; font-size: 13px; min-height: 18px; }
+      .ok { color: #1b5e20; }
+      .err { color: #b71c1c; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>Opzioni AI</h1>
+      <p class="helper">Configura provider, modello e credenziali in contesto estensione. I token non vengono condivisi con il content script.</p>
+
+      <div class="grid">
+        <div class="field">
+          <label for="provider">Provider</label>
+          <select id="provider">
+            <option value="openai">OpenAI (diretto)</option>
+            <option value="proxy">Backend proxy consigliato</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="model">Model</label>
+          <input id="model" type="text" placeholder="gpt-4o-mini" />
+        </div>
+
+        <div class="field full">
+          <label for="endpoint">Endpoint API / Proxy URL</label>
+          <input id="endpoint" type="url" placeholder="https://api.openai.com/v1/chat/completions" />
+        </div>
+
+        <div class="field full" id="tokenWrap">
+          <label for="token">Token API (solo se provider diretto)</label>
+          <input id="token" type="password" placeholder="sk-..." autocomplete="off" />
+        </div>
+
+        <div class="field full">
+          <label for="passphrase">Passphrase cifratura locale (opzionale)</label>
+          <input id="passphrase" type="password" placeholder="Se impostata, token cifrato in storage" autocomplete="off" />
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="btnSave" class="primary">Salva configurazione</button>
+        <button id="btnResetToken">Rimuovi token salvato</button>
+      </div>
+
+      <div class="note">Suggerimento privacy: usa il provider "Backend proxy" per evitare token client-side e centralizzare policy/audit.</div>
+      <div id="status"></div>
+    </div>
+
+    <script src="options.js"></script>
+  </body>
+</html>

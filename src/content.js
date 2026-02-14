@@ -390,22 +390,36 @@
     aggressiveReapply();
 
     function collectReducedDomSnapshot() {
-        const nodes = [...document.querySelectorAll("h1, h2, h3, form, table, [role='table'], button, input, select, textarea, canvas, svg")].slice(0, 120);
-        return nodes.map((node) => ({
-            tag: node.tagName.toLowerCase(),
-            id: node.id || null,
-            className: truncateText(node.className || "", 120),
-            role: node.getAttribute("role"),
-            text: truncateText(node.textContent, 180)
-        }));
+        const headings = [...document.querySelectorAll("h1, h2, h3, [role='heading'], caption")]
+            .slice(0, 30)
+            .map((node) => truncateText(node.textContent, 90))
+            .filter(Boolean);
+
+        return {
+            heading_count: headings.length,
+            headings,
+            forms_count: document.querySelectorAll("form").length,
+            buttons_count: document.querySelectorAll("button").length,
+            input_count: document.querySelectorAll("input, select, textarea").length
+        };
+    }
+
+    function inferColumnType(col) {
+        const source = `${col.field || ""} ${col.title || ""} ${col.label || ""}`.toLowerCase();
+        if (/date|time|giorno|mese|anno/.test(source)) return "date";
+        if (/qty|amount|tot|price|importo|numero|count|id/.test(source)) return "number";
+        if (/mail|email/.test(source)) return "email";
+        if (/status|state|stato/.test(source)) return "status";
+        return "string";
     }
 
     function collectTableMetadata() {
         return findAllTables().slice(0, 10).map((table) => {
             const cols = getCols(table.el).slice(0, 40).map((col) => ({
                 field: col.field || null,
-                label: col.title || col.label || col.field || null,
-                visible: col.visible !== false
+                header: col.title || col.label || col.field || null,
+                visible: col.visible !== false,
+                inferred_type: inferColumnType(col)
             }));
             return {
                 table_id: table.tableId,
@@ -416,24 +430,19 @@
         });
     }
 
-    function collectSignificantInlineScripts() {
-        const keywords = /(tabulator|table|filter|chart|form|fetch|axios|xhr|api)/i;
-        return [...document.querySelectorAll("script:not([src])")].map((s) => s.textContent || "")
-            .filter((txt) => txt.length > 30 && keywords.test(txt))
-            .slice(0, 8)
-            .map((txt) => truncateText(txt, 900));
-    }
-
     function buildPageSnapshot() {
         return {
             page: {
-                url: location.href,
-                title: document.title,
-                pathname: location.pathname
+                origin: location.origin,
+                pathname: location.pathname,
+                title: truncateText(document.title, 120)
             },
-            dom: collectReducedDomSnapshot(),
+            dom_summary: collectReducedDomSnapshot(),
             table_metadata: collectTableMetadata(),
-            significant_inline_scripts: collectSignificantInlineScripts()
+            policy: {
+                minimized: true,
+                excluded: ["full_html", "inline_scripts", "full_text_content"]
+            }
         };
     }
 
@@ -554,12 +563,15 @@
                         snapshot,
                         url: location.href,
                         viewKey: computeKeyStable(tables[0].el),
-                        forceRefresh: !!data?.forceRefresh
+                        forceRefresh: !!data?.forceRefresh,
+                        passphrase: data?.passphrase || ""
                     });
 
                     if (!result?.ok) {
                         const humanErrors = {
-                            TOKEN_MISSING: "Token OpenAI non configurato. Imposta OPENAI_API_KEY in storage.",
+                            CONFIG_MISSING: "Configurazione AI mancante: apri Opzioni AI e completa provider/model/endpoint.",
+                            PASSPHRASE_REQUIRED: "Token cifrato: inserisci passphrase nel popup o aggiorna Opzioni AI.",
+                            PASSPHRASE_INVALID: "Passphrase non valida: verifica la passphrase configurata.",
                             QUOTA: "Quota API esaurita o limite richieste raggiunto.",
                             TIMEOUT: "Richiesta scaduta per timeout: riprova tra poco.",
                             SCHEMA_INVALID: "Il modello ha risposto in formato inatteso.",
