@@ -232,12 +232,13 @@
 
         if (isNewFormat) {
             for (const item of savedConfig) {
-                if (item.visible && currentMap.has(item.field)) {
-                    finalCols.push(currentMap.get(item.field));
-                    currentMap.delete(item.field);
-                } else if (!item.visible) {
-                    currentMap.delete(item.field);
-                }
+                if (!currentMap.has(item.field)) continue;
+                const baseCol = currentMap.get(item.field);
+                finalCols.push({
+                    ...baseCol,
+                    visible: item.visible !== false
+                });
+                currentMap.delete(item.field);
             }
         } else {
             for (const field of savedConfig) {
@@ -270,10 +271,69 @@
         return true;
     }
 
+    function rowCells(row) {
+        return row ? [...row.children].filter((cell) => cell.matches("th, td")) : [];
+    }
+
+    function nativeColsSignature(cols) {
+        return cols.map((col) => `${col?.field || ""}:${col?.visible !== false ? 1 : 0}`).join("|");
+    }
+
+    async function setColsViaNativeTable(el, cols) {
+        if (!el || el.tagName !== "TABLE") return false;
+
+        const currentCols = getCols(el);
+        if (!currentCols.length) return false;
+
+        const indexByField = new Map(currentCols.map((col, idx) => [col.field, idx]));
+        const orderedIndexes = [];
+        const visibleIndexes = new Set();
+
+        for (const col of cols) {
+            const idx = indexByField.get(col?.field);
+            if (idx === undefined) continue;
+            orderedIndexes.push(idx);
+            if (col.visible !== false) visibleIndexes.add(idx);
+        }
+
+        if (!orderedIndexes.length) return false;
+
+        const signature = nativeColsSignature(cols);
+        if (el.dataset.filterHelpNativeColsSig === signature) return false;
+
+        const rows = [...el.querySelectorAll("tr")];
+        for (const row of rows) {
+            const cells = rowCells(row);
+            if (!cells.length) continue;
+
+            const movable = orderedIndexes
+                .map((idx) => cells[idx])
+                .filter(Boolean);
+
+            if (!movable.length) continue;
+
+            for (const cell of movable) row.appendChild(cell);
+
+            const updatedCells = rowCells(row);
+            for (let i = 0; i < updatedCells.length; i++) {
+                const cell = updatedCells[i];
+                const sourceColIdx = orderedIndexes[i];
+                const shouldBeVisible = sourceColIdx === undefined ? true : visibleIndexes.has(sourceColIdx);
+                cell.style.display = shouldBeVisible ? "" : "none";
+                if (shouldBeVisible) cell.removeAttribute("aria-hidden");
+                else cell.setAttribute("aria-hidden", "true");
+            }
+        }
+
+        el.dataset.filterHelpNativeColsSig = signature;
+        return true;
+    }
+
     async function applyColumnsToTable(descriptor, columns) {
         if (!Array.isArray(columns) || !columns.length) return { ok: false, msg: "Nessuna colonna da applicare." };
         if (await setColsViaTabulator(descriptor.el, columns)) return { ok: true, mode: "tabulator" };
         if (await setColsViaPayload(descriptor.el, columns)) return { ok: true, mode: "payload" };
+        if (await setColsViaNativeTable(descriptor.el, columns)) return { ok: true, mode: "native-table" };
         return { ok: false, msg: "Tabella non modificabile in runtime." };
     }
 
@@ -340,6 +400,7 @@
 
         if (await setColsViaTabulator(descriptor.el, colsToApply)) return { applied: true, reason: "tabulator" };
         if (await setColsViaPayload(descriptor.el, colsToApply)) return { applied: true, reason: "payload" };
+        if (await setColsViaNativeTable(descriptor.el, colsToApply)) return { applied: true, reason: "native-table" };
 
         return { applied: false, reason: "failed" };
     }
