@@ -232,12 +232,13 @@
 
         if (isNewFormat) {
             for (const item of savedConfig) {
-                if (item.visible && currentMap.has(item.field)) {
-                    finalCols.push(currentMap.get(item.field));
-                    currentMap.delete(item.field);
-                } else if (!item.visible) {
-                    currentMap.delete(item.field);
-                }
+                if (!currentMap.has(item.field)) continue;
+                const baseCol = currentMap.get(item.field);
+                finalCols.push({
+                    ...baseCol,
+                    visible: item.visible !== false
+                });
+                currentMap.delete(item.field);
             }
         } else {
             for (const field of savedConfig) {
@@ -274,6 +275,10 @@
         return row ? [...row.children].filter((cell) => cell.matches("th, td")) : [];
     }
 
+    function nativeColsSignature(cols) {
+        return cols.map((col) => `${col?.field || ""}:${col?.visible !== false ? 1 : 0}`).join("|");
+    }
+
     async function setColsViaNativeTable(el, cols) {
         if (!el || el.tagName !== "TABLE") return false;
 
@@ -292,6 +297,9 @@
         }
 
         if (!orderedIndexes.length) return false;
+
+        const signature = nativeColsSignature(cols);
+        if (el.dataset.filterHelpNativeColsSig === signature) return false;
 
         const rows = [...el.querySelectorAll("tr")];
         for (const row of rows) {
@@ -317,6 +325,7 @@
             }
         }
 
+        el.dataset.filterHelpNativeColsSig = signature;
         return true;
     }
 
