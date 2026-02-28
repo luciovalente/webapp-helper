@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PORT="${DMN_PORT:-4173}"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+show_help() {
+  cat <<'HELP'
+Usage: ./dmn [--port <port>] [--install] [--help]
+
+Small helper to serve this extension folder locally for quick preview/debug.
+
+Options:
+  --port <port>   HTTP port to use (default: 4173 or $DMN_PORT)
+  --install       Install dmn in ~/.local/bin (so you can run `dmn` globally)
+  --help          Show this help
+
+Notes:
+- From the repository folder, run `./dmn` (not just `dmn`) unless dmn is in your PATH.
+HELP
+}
+
+install_cmd() {
+  local target_dir="$HOME/.local/bin"
+  mkdir -p "$target_dir"
+  cp "$ROOT_DIR/dmn" "$target_dir/dmn"
+  chmod +x "$target_dir/dmn"
+
+  echo "Installed: $target_dir/dmn"
+  if [[ ":$PATH:" != *":$target_dir:"* ]]; then
+    echo "Add this to your shell profile to enable 'dmn' globally:"
+    echo "  export PATH=\"$target_dir:\$PATH\""
+  fi
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --port)
+      PORT="${2:-}"
+      shift 2
+      ;;
+    --install)
+      install_cmd
+      exit 0
+      ;;
+    --help|-h)
+      show_help
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      show_help >&2
+      exit 1
+      ;;
+  esac
+done
+
+cd "$ROOT_DIR"
+echo "Serving $ROOT_DIR on http://0.0.0.0:${PORT}"
+python -m http.server "$PORT"
