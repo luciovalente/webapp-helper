@@ -54,7 +54,7 @@
 .wah-row select,
 .wah-row button,
 #wah-panel button {
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .wah-row input,
@@ -72,7 +72,8 @@
   background: #374151;
   color: #f9fafb;
   border-radius: 6px;
-  padding: 6px 8px;
+  padding: 4px 7px;
+  line-height: 1.1;
   cursor: pointer;
 }
 

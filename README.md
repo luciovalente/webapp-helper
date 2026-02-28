@@ -17,6 +17,25 @@ Estensione Chrome (Manifest V3) per supportare la gestione avanzata di tabelle i
 3. Clicca **Carica estensione non pacchettizzata**.
 4. Seleziona la cartella di questo repository.
 
+
+## Comando `dmn` (preview locale)
+
+Se da terminale lanci `dmn` e ricevi **command not found**, è normale: la cartella corrente non è nel `PATH`.
+
+Usa:
+
+```bash
+./dmn
+```
+
+Per installarlo globalmente nel tuo utente:
+
+```bash
+./dmn --install
+```
+
+Se necessario, aggiungi `~/.local/bin` al `PATH` (come indicato dallo script).
+
 ## Configurazione AI
 
 Apri **Opzioni AI** dall'icona dell'estensione (popup) oppure da `chrome://extensions`:
